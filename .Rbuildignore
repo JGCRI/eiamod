@@ -1,0 +1,11 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.travis\.yml$
+^appveyor\.yml$
+^codecov\.yml$
+^.covrignore$
+README.md
+LICENSE
+
+^data-raw$
+^python$
