@@ -18,6 +18,11 @@ test_that('Load modeling function works', {
     expect_equal(rslt,
                  list(FOO=list(formula=load~temperature, data=testdata, opt1=NA, opt2='foo')))
 
+    ## Test overriding the formula
+    rslt <- load_model(testfun, testdata, formula=load~temperature^2, opt1='foo', opt2='bar')
+    expect_equal(rslt,
+                 list(FOO=list(formula=load~temperature^2, data=testdata, opt1='foo', opt2='bar')))
+
     ## Now check with default data
     rslt <- load_model(testfun, opt1='foo')
     rgns <- unique(region_hourly$region)

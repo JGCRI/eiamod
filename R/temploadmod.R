@@ -11,10 +11,11 @@
 #' \code{\link[stats]{lm}} conventions.
 #' @param hourly_data Data frame of hourly data.  If omitted, then
 #' \code{\link{region_hourly}} is used.
+#' @param formula Formula for the model.  Default is \code{load~temperature}
 #' @param ... Additional arguments passed to the modeling function.
 #' @return List of model objects, one for each region.
 #' @export
-load_model <- function(model=stats::lm, hourly_data=NULL, ...)
+load_model <- function(model=stats::lm, hourly_data=NULL, formula=load~temperature, ...)
 {
     if(is.null(hourly_data)) {
         hourly_data <- region_hourly
@@ -23,7 +24,7 @@ load_model <- function(model=stats::lm, hourly_data=NULL, ...)
     regional_data <- split(hourly_data, hourly_data$region)
 
     lapply(regional_data, function(h) {
-               model(formula=load~temperature, data=h, ...)
+               model(formula=formula, data=h, ...)
            })
 }
 

@@ -4,7 +4,8 @@
 \alias{load_model}
 \title{Create models for load as a function of temperature}
 \usage{
-load_model(model = stats::lm, hourly_data = NULL, ...)
+load_model(model = stats::lm, hourly_data = NULL, formula = load ~
+  temperature, ...)
 }
 \arguments{
 \item{model}{Modeling function to use.  The function must conform to the
@@ -12,6 +13,8 @@ load_model(model = stats::lm, hourly_data = NULL, ...)
 
 \item{hourly_data}{Data frame of hourly data.  If omitted, then
 \code{\link{region_hourly}} is used.}
+
+\item{formula}{Formula for the model.  Default is \code{load~temperature}}
 
 \item{...}{Additional arguments passed to the modeling function.}
 }
