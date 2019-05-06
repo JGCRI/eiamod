@@ -10,3 +10,7 @@
 *.zip
 *.csv
 *.csv.gz
+
+# Output of R notebooks.
+*.nb.html
+

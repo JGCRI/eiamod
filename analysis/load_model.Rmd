@@ -1,0 +1,32 @@
+---
+title: "Simple models for load from temperature"
+output: html_notebook
+---
+
+
+```{r setup}
+library(eiamod)
+
+rsltsummary <- function(rslt) {
+    dplyr::bind_rows(
+        lapply(names(rslt), function(rgn) {
+            r2 <- summary(rslt[[rgn]])$r.squared
+            data.frame(rgn=rgn, r2=r2, stringsAsFactors = FALSE)   
+        })
+    )
+}
+```
+
+```{r stdata}
+stdata <- standardize_byrgn(region_hourly, c('load','temperature'))
+```
+
+## Linear model
+
+Run linear models by region as a baseline for performance.
+```{r lm}
+rsltlm <- load_model(hourly_data=stdata)
+rsltsummary(rsltlm)
+```
+
+We expect an increase in 
