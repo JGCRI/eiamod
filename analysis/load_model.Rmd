@@ -6,11 +6,13 @@ output: html_notebook
 
 ```{r setup}
 library(eiamod)
+library(earth)
+library(randomForest)
 
-rsltsummary <- function(rslt) {
+rsltsummary <- function(rslt, stat='r.squared') {
     dplyr::bind_rows(
         lapply(names(rslt), function(rgn) {
-            r2 <- summary(rslt[[rgn]])$r.squared
+            r2 <- summary(rslt[[rgn]])[[stat]]
             data.frame(rgn=rgn, r2=r2, stringsAsFactors = FALSE)   
         })
     )
@@ -29,4 +31,36 @@ rsltlm <- load_model(hourly_data=stdata)
 rsltsummary(rsltlm)
 ```
 
-We expect an increase in 
+We expect an increase in load for both high and low temperatures, so we can retry the
+linear model with a squared term.
+```{r lmsqr}
+rsltlmsqr <- load_model(hourly_data=stdata, formula=load~temperature + I(temperature^2))
+rsltsummary(rsltlmsqr)
+```
+
+## Fits using MARS models
+```{r earth}
+rsltearth <- load_model(earth, hourly_data=stdata)
+rsltsummary(rsltearth, 'grsq')
+```
+Interesting.  These compare pretty favorably to the linear model using the squared term.  It looks
+like it's a little higher across the board.  We can try adding more terms to see if we get anything 
+new.
+```{r earthd2}
+rsltearthd2 <- load_model(earth, stdata, formula=load~temperature+I(temperature^2), degree=3)
+rsltsummary(rsltearth, 'grsq')
+```
+Same result as the above.  I would interpret this as saying that the main thing here is
+allowing the model to increase in both directions, low and high.  The $T$^2 term does this,
+and it also adds some curvature to the relation, but the curvature isn't doing anythng for us
+because the earth model with just temperature does just as well.
+
+## Random forest models
+I don't expect this to add a whole lot of value, since in the end we have only the one predictor,
+but it's worth seeing what we can get with an off the shelf ML algorithm.  (Removed because it 
+takes a long time to run and doesn't perform very well.)
+```{r randomforest}
+##rsltrf <- load_model(randomForest, stdata, ntree=100)
+##rsltsummary(rsltrf, 'rsq')
+```
+
