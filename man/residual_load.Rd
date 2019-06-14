@@ -17,3 +17,8 @@ end on week boundaries, this may not match the calendar year.}
 This data frame contains the hourly load data, with load values predicted
 from the temperature data subtracted off.
 }
+\details{
+Load values were standardized prior to fitting the temperature model, so
+these values are the difference between the temperature prediction of the
+standardized load and the observed standardized load.
+}

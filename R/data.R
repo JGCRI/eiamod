@@ -28,6 +28,10 @@ NULL
 #' This data frame contains the hourly load data, with load values predicted
 #' from the temperature data subtracted off.
 #'
+#' Load values were standardized prior to fitting the temperature model, so
+#' these values are the difference between the temperature prediction of the
+#' standardized load and the observed standardized load.
+#'
 #' @format Data frame with 6 columns
 #' \describe{
 #' \item{EconYear}{Economic year.  Since quarters are forced to begin and
