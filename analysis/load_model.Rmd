@@ -1,13 +1,17 @@
 ---
 title: "Simple models for load from temperature"
-output: html_notebook
+output: 
+  html_notebook: 
+    fig_width: 6.5
+    highlight: pygments
+    theme: readable
 ---
 
 
 ```{r setup}
 library(eiamod)
 library(earth)
-library(randomForest)
+#library(randomForest)
 
 rsltsummary <- function(rslt, stat='r.squared') {
     dplyr::bind_rows(
@@ -17,6 +21,8 @@ rsltsummary <- function(rslt, stat='r.squared') {
         })
     )
 }
+
+DO_SAVE_DATA <- FALSE
 ```
 
 ```{r stdata}
@@ -64,3 +70,24 @@ takes a long time to run and doesn't perform very well.)
 ##rsltsummary(rsltrf, 'rsq')
 ```
 
+## Residual load dataset
+
+The MARS model seems to perform the best, so we will use that one to take out the temperature
+component of the load.
+
+```{r loadxtemp}
+ep <- as.vector(sapply(rsltearth, predict))
+plot(stdata$load, ep, pch='.')
+stdata <- dplyr::mutate(stdata, residual_load = load - ep)
+hist(stdata$residual_load, breaks=100)
+```
+
+This data is going to be the basis for our modeling, so we will store this as
+`residual_load` in the package data.
+
+```{r savedata}
+if(DO_SAVE_DATA) {
+    residual_load <- dplyr::select(stdata, EconYear, quarter, week, region, time, residual_load)
+    usethis::use_data(residual_load, compress='xz')
+}
+```
