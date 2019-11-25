@@ -32,5 +32,10 @@ the package datasets listed above.
 Electricity and temperature data are processed using the raw data in
 `temperature_by_agg_region.csv.gz` and `load_by_agg_region.csv.gz`,
 both of which are produced by the `eiafcst` python package.  These
-data are read in and saved as package data.
+data are read in and saved as package data by the code in `temp_elec.R`.
 
+The code in `residual_load.R` fits a MARS model for load from
+temperature and subtracts the predictions from the actual load to
+produce a residual load.  This program makes use of the
+`region_hourly` dataset, so that data must be produced and the
+`eiamod` package rebuilt before this code can be run.
