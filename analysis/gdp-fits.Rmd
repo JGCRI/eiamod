@@ -1,0 +1,130 @@
+---
+title: "GDP Modeling"
+output: html_notebook
+---
+
+```{r setup}
+library('eiamod')
+library('dplyr', warn.conflicts = FALSE)
+library('tibble')
+library('ggplot2')
+library('ggthemes')
+library('earth')
+```
+
+## Model I: Total temperature-adjusted energy vs. GDP
+
+The first principal component over the spatial component of the data is basically a modestly
+weighted sum over the regions.  For simplicity, we can just approximate this as a sum over
+the regions.  It's less clear what to do with the time dependence.  As a first attempt, we'll
+just sum over that too and see what we get.
+
+```{r model1.data}
+elec <- group_by(residual_load, EconYear, quarter) %>% summarise(elec=sum(residual_load))
+energy <- group_by(energy_weekly, EconYear, quarter) %>% summarise(petrol=sum(petrol), gas=sum(gas))
+gdp <- select(gdp_quarterly, EconYear, quarter, gdp)
+m1data <- full_join(elec, energy, by=c('EconYear', 'quarter')) %>% 
+    full_join(gdp, by=c('EconYear', 'quarter'))
+```
+
+```{r model1.lm}
+m0lm <- lm(gdp ~ elec, m1data)
+m0pglm <- lm(gdp ~ petrol+gas, m1data)
+m1lm <- lm(gdp ~ elec+petrol+gas, m1data)
+summary(m1lm)
+gdp1lm <- predict(m1lm)
+plot(m1lm)
+plot(m1data$gdp, gdp1lm, xlab='GDP (observed)', ylab='GDP (predicted)')
+```
+
+```{r model1.earth}
+m1ea <- earth(gdp ~ elec+petrol+gas, m1data)
+summary(m1ea)
+gdp1ea <- predict(m1ea)
+plot(m1ea)
+plot(m1data$gdp, gdp1ea, xlab='GDP (observed)', ylab='GDP (predicted)')
+```
+
+## Model II:  Timewise PCA of total temperature-adjusted electricity plus other energy vs. GDP
+
+```{r model2.elecdata}
+elec <- group_by(residual_load, EconYear, quarter, week, time) %>% 
+    summarise(elec=sum(residual_load)) %>% ungroup() %>%
+    arrange(EconYear, quarter, week, time)
+elecdata_weekly <- matrix(elec$elec, ncol=168)     # 168 hours in a week
+pcdata <- prcomp(elecdata_weekly, scale.=TRUE, retx=TRUE)
+rpwr <- pcdata$sdev^2/sum(pcdata$sdev^2)
+```
+
+```{r model2.pcplots}
+rp <- rpwr[1:25]
+ggplot(mapping=aes(x=seq_along(rp), y=rp)) + geom_point(color='lightgrey') + 
+    xlab('index') + ylab('relative power') +
+    theme_solarized_2(light=FALSE) + scale_color_solarized()
+pcpltdata <- as.data.frame(pcdata$rotation[,1:6]) %>% mutate(hour=seq(1,168)) %>%
+    tidyr::gather('pc','value', -hour)
+ggplot(data=pcpltdata, aes(x=hour, y=value, color=pc)) + geom_line() + facet_wrap(~pc) +
+    scale_x_continuous(breaks=24*seq(0,7), minor_breaks=(24*seq(1,7))-12) +
+    theme_solarized_2(light=FALSE) + scale_color_solarized()
+```
+
+It appears that there are about 6 components with significant power, though maybe one could
+argue for 8 or 9, with a sufficiently generous definition of "significant".  We will continue
+to focus on just the first 6, which we have plotted above.  Evidently each of the components
+is responding to periodicity on one or more scales.  Note, however, that each hour was 
+independently centered and scaled for the PCA, so this is not a response to periodic behavior
+in the raw load, but rather to periodic deviations from the mean load (across the entire dataset) 
+for the hour.
+
+To get a better understanding of the nature of these periodic fluctuations, we can do a power 
+spectrum analysis.
+
+```{r model2.pcps}
+pc16 <- pcdata$rotation[,1:6]
+pcmeans <- colMeans(pc16)
+pcctr <- sweep(pc16, 2, pcmeans)
+nsamp <- nrow(pc16)
+inq <- 1 + nsamp/2
+pcspec <- Mod(mvfft(pcctr))[1:inq,]
+f <- seq(0,inq-1) / nsamp
+tau <- 1/f   # tau in days
+pltpwrspec <- as.data.frame(pcspec) %>% mutate(f=f, tau=tau) %>% tidyr::gather('pc','sqrtpwr', -f, -tau)
+brkhr <- c(48, 24, 12, 6, 3)
+brkf <- 1/brkhr
+brkmin <- 1/seq(1,12)
+ggplot(data=pltpwrspec, aes(x=f, y=sqrtpwr, fill=pc)) + 
+    #geom_smooth(se=FALSE, span=0.1) + 
+    geom_col() +
+    facet_wrap(~pc) +
+    scale_x_continuous(name='tau (hr)', breaks=brkf, labels=as.character(brkhr), minor_breaks=brkmin) +
+    theme_solarized_2(light=FALSE) + scale_fill_solarized()
+```
+
+```{r model2.lm}
+## Get a table of weeks
+weektbl <- count(elec, EconYear, quarter, week) %>% arrange(EconYear, quarter, week)
+invisible(assertthat::assert_that(all(weektbl$n == 168)))
+invisible(assertthat::assert_that(nrow(weektbl) == nrow(pcdata$x)))
+
+## Now, the matrix pcdata$x has one row for each week; PC projection coefficients are in 
+## columns.  We'll keep 1-6.  For each quarter, sum up the statistics over weeks.
+m2data <- select(weektbl, -n) %>% 
+    bind_cols(as.data.frame(pcdata$x[,1:6])) %>%
+    group_by(EconYear, quarter) %>% summarise(PC1=sum(PC1), PC2=sum(PC2), PC3=sum(PC3),
+                                              PC4=sum(PC4), PC5=sum(PC5), PC6=sum(PC6)) %>%
+    ungroup() %>%
+    full_join(energy, by=c('EconYear', 'quarter')) %>%
+    full_join(gdp, by=c('EconYear', 'quarter')) 
+
+m2lm <- list()
+length(m2lm) <- 6
+m2lm[[1]] <- lm(gdp ~ PC1+petrol+gas, m2data)
+m2lm[[2]] <- lm(gdp ~ PC1+PC2+petrol+gas, m2data)
+m2lm[[3]] <- lm(gdp ~ PC1+PC2+PC3+petrol+gas, m2data)
+m2lm[[4]] <- lm(gdp ~ PC1+PC2+PC3+PC4+petrol+gas, m2data)
+m2lm[[5]] <- lm(gdp ~ PC1+PC2+PC3+PC4+PC5+petrol+gas, m2data)
+m2lm[[6]] <- lm(gdp ~ PC1+PC2+PC3+PC4+PC5+PC6+petrol+gas, m2data)
+
+m2lmstats <- bind_rows(lapply(m2lm, broom::glance))
+m2lmstats
+```

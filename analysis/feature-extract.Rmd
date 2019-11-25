@@ -1,0 +1,70 @@
+---
+title: "Residual Load Feature Extraction"
+output: 
+  html_notebook: 
+    fig_height: 5
+    fig_width: 6.5
+---
+
+```{r setup}
+library(magrittr)
+library(ggplot2)
+
+## Number of principal components to keep
+npc <- 5
+```
+
+The first thing we want to do is to consolidate from the 14 regions to a manageable
+number of single-timestep features.  We'll try principal components analysis for this.
+
+```{r pca_by_timestep}
+rgns <- unique(residual_load[['region']])
+residual_table <- tidyr::spread(residual_load, region, residual_load)
+residual_matrix <- as.matrix(residual_table[rgns])
+## Set center to FALSE because the data is already centered.
+resid_pca <- prcomp(residual_matrix, center=FALSE)
+resid_pca$rotation
+plot(resid_pca$sdev/resid_pca$sdev[1])
+
+rotpltdata <- tibble::as_tibble(resid_pca$rotation[,1:npc]) %>%
+    dplyr::mutate(region=row.names(resid_pca$rotation)) %>%
+    tidyr::gather('PC', 'value', -region)
+pltpc <- ggplot(data=rotpltdata, aes(x=region, y=value, linetype=PC, group=PC)) + 
+    geom_line(color='lightgrey') +
+    ggthemes::theme_solarized_2(light=FALSE, base_size = 8)
+pltpc
+```
+
+I guess we'll need to decide how many components to keep, but for now we'll forge
+ahead with `r npc` just to see what we get.
+
+```{r pctrim}
+pcseries <- dplyr::select(residual_table, EconYear, quarter, week, time) %>%
+    cbind(resid_pca$x[,1:5])
+head(pcseries,10)
+```
+
+Here's a sample of two weeks in October 2006.  Most of these principal components 
+are pretty regular.  There is evidently a fairly strong diurnal signal in most of
+the components, though the strength of those components does vary from day to day.
+
+```{r plotpcs}
+pltdata <- tidyr::gather(pcseries, 'PC', 'value', -EconYear, -quarter, -week, -time) %>%
+    dplyr::filter(EconYear==2006, quarter==4, week<4, week>1)
+ggplot(data=pltdata, aes(x=time, y=value, linetype=PC)) + geom_line(color='lightgrey') +
+    ggthemes::theme_solarized_2(light=FALSE)
+```
+
+Here is Thanksgiving week and the week before for the same year.
+```{r tgiving}
+pltdata <- tidyr::gather(pcseries, 'PC', 'value', -EconYear, -quarter, -week, -time) %>%
+    dplyr::filter(EconYear==2006, time >= '2006-11-12', 
+                  time <= '2006-11-26')
+pltnov <- 
+    ggplot(data=pltdata, aes(x=time, y=value, linetype=PC, color=PC)) + geom_line() +
+    scale_x_datetime(date_breaks='2 days') +
+    ggthemes::scale_color_solarized() +
+    ggthemes::theme_solarized_2(light=FALSE)
+pltnov
+```
+
