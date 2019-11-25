@@ -14,3 +14,6 @@
 # Output of R notebooks.
 *.nb.html
 
+# Mac files
+.DS_Store
+
