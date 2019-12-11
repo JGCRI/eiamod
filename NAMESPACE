@@ -2,4 +2,5 @@
 
 export(load_model)
 export(standardize_byrgn)
+export(timesince)
 export(unstandardize_byrgn)
