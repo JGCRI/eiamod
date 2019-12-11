@@ -80,6 +80,10 @@ ep <- as.vector(sapply(rsltearth, predict))
 plot(stdata$load, ep, pch='.')
 stdata <- dplyr::mutate(stdata, residual_load = load - ep)
 hist(stdata$residual_load, breaks=100)
+bwidth <- 0.1
+fx <- function(x) {nrow(stdata)*bwidth*dnorm(x, mean=0, sd=sd(stdata$residual_load))}
+ggplot(data=stdata, aes(x=residual_load)) + geom_histogram(binwidth=bwidth) + stat_function(fun=fx, size=1.25) + theme_bw(16) + xlab('Residual Electricity')
+
 ```
 
 This data is going to be the basis for our modeling, so we will store this as

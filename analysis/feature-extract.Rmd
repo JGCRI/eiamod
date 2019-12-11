@@ -9,10 +9,13 @@ output:
 ```{r setup}
 library(magrittr)
 library(ggplot2)
+library(eiamod)
 
 ## Number of principal components to keep
 npc <- 5
 ```
+
+## Regional patterns at fixed time.
 
 The first thing we want to do is to consolidate from the 14 regions to a manageable
 number of single-timestep features.  We'll try principal components analysis for this.
@@ -23,7 +26,7 @@ residual_table <- tidyr::spread(residual_load, region, residual_load)
 residual_matrix <- as.matrix(residual_table[rgns])
 ## Set center to FALSE because the data is already centered.
 resid_pca <- prcomp(residual_matrix, center=FALSE)
-resid_pca$rotation
+as.data.frame(resid_pca$rotation[,1:npc])
 plot(resid_pca$sdev/resid_pca$sdev[1])
 
 rotpltdata <- tibble::as_tibble(resid_pca$rotation[,1:npc]) %>%
@@ -68,3 +71,76 @@ pltnov <-
 pltnov
 ```
 
+## Time series patterns
+
+To do the time series analysis, first observe that our basic unit of analysis is the 
+calendar week.  So, let each week be a data point.  For each week, we want all 168 values
+of the principal components for that week.
+
+```{r pcats}
+pcats <- dplyr::select(residual_table, EconYear, quarter, week, time) %>%
+  dplyr::group_by(EconYear, quarter, week) %>% 
+  dplyr::mutate(weekhour = timesince(time)) %>%
+  dplyr::ungroup()  
+pcats <- cbind(pcats, as.data.frame(resid_pca$x))
+## Do the analysis for just PC1 and PC2 for now
+pc1weeks <- tidyr::spread(dplyr::select(pcats, EconYear, quarter, week, weekhour, PC1),
+                          weekhour, PC1)
+pc2weeks <- tidyr::spread(dplyr::select(pcats, EconYear, quarter, week, weekhour, PC2),
+                          weekhour, PC2)
+```
+
+```{r weeksdata}
+pc1mat <- as.matrix(dplyr::select(pc1weeks, -EconYear, -quarter, -week))
+pc2mat <- as.matrix(dplyr::select(pc2weeks, -EconYear, -quarter, -week))
+```
+
+```{r weekspca1}
+pcatime1 <- prcomp(pc1mat, center=FALSE)
+pcatime2 <- prcomp(pc2mat, center=FALSE)
+plot(pcatime1$rotation[,1], type='l')
+plot(pcatime2$rotation[,1], type='l')
+```
+
+Oops.  We didn't center because the data had already been standardized, but they have
+been standardized by region, not by hour of the week.  Clearly there is a strong diurnal
+dependence for both regional components.  Let's rerun with the observations centered.
+
+```{r weekspca_ctr}
+pcatime1_ctr <- prcomp(pc1mat, center=TRUE)
+pcatime2_ctr <- prcomp(pc2mat, center=TRUE)
+calc_varfrac <- function(pcstr, npc=3, pctstring=FALSE) {
+    pwr <- pcstr$sdev^2
+    vf <- cumsum(pwr/sum(pwr))[npc]
+    if(pctstring) {
+      paste0(signif(100*vf,2), '%')
+    }
+    else {
+      vf
+    }
+}  
+pltpcstruct <- function(pcstr, title='', npc=3) {
+    varfrac <- calc_varfrac(pcstr)
+    subtitle <- paste('Variance fraction:', calc_varfrac(pcstr, pctstring=TRUE))
+    pcf <- as.data.frame(pcstr$rotation[,1:npc, drop=FALSE])
+    pcf$hour <- seq(0, nrow(pcf)-1)
+    pltdata <- tidyr::gather(pcf, 'component', 'weight', -hour)
+    ggplot(data=pltdata, aes(x=hour, y=weight, color=component)) + geom_line(size=1.25) +
+      theme_bw() + ggtitle(title, subtitle) + ggthemes::scale_color_solarized('red') +
+      scale_x_continuous(breaks=seq(0,168,24), minor_breaks=seq(0,168,24)+12)
+}
+pltpcstruct(pcatime1_ctr, 'Regional component 1')
+pltpcstruct(pcatime2_ctr, 'Regional component 2')
+```
+Here we have three temporal components for each regional component.  For regional
+component 1 (mostly CONUS), these three components account for `r calc_varfrac(pcatime1_ctr,
+pctstring=TRUE)` of the total variation in the data.  In component 2 (mostly Alaska and
+Hawaii), the first component alone accounts for `r calc_varfrac(pcatime2_ctr, npc=1,
+pctstring=TRUE)` of the total variation.  For both regional components, the first
+temporal component has some diurnal variation, but it is small (compared to the other
+components), and all of the coefficients have the same sign.  In other words, this
+component represents a weighted sum of the departure from the mean value for the
+particular hour of the week.  For component 2, this is almost all of the information
+in the time series.  For component 1, the second temporal component appears to encode
+a difference between morning and evening values, while the third appears to encode a
+weekly trend.

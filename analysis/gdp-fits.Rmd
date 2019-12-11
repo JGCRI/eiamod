@@ -38,20 +38,39 @@ plot(m1data$gdp, gdp1lm, xlab='GDP (observed)', ylab='GDP (predicted)')
 ```
 
 ```{r model1.earth}
-m1ea <- earth(gdp ~ elec+petrol+gas, m1data)
+m1ea <- earth(gdp ~ elec+petrol+gas, m1data, keepxy = TRUE)
 summary(m1ea)
 gdp1ea <- predict(m1ea)
 plot(m1ea)
 plot(m1data$gdp, gdp1ea, xlab='GDP (observed)', ylab='GDP (predicted)')
 ```
 
+### Model IA:  Separate CONUS and AK/HI totals.
+(We never got around to finishing this model because once we found the bug in Model II
+it was performing better than we expect from this model.)
+```{r model1a.elecdata}
+sum_rgns <- function(load_data) {
+    group_by(load_data, EconYear, quarter, week, time) %>% 
+    summarise(elec=sum(residual_load)) %>% ungroup() %>%
+    arrange(EconYear, quarter, week, time)
+}
+elec_split <- split(residual_load, residual_load$region %in% c('CEA','HECO')) %>%
+    lapply(sum_rgns)
+
+hourly_mean_resid <- function(load_data) {
+    ## Take advantage of the fact that we know each week has 168 hours
+       
+}
+```
+
 ## Model II:  Timewise PCA of total temperature-adjusted electricity plus other energy vs. GDP
 
 ```{r model2.elecdata}
-elec <- group_by(residual_load, EconYear, quarter, week, time) %>% 
+elec <- residual_load %>%
+    group_by(EconYear, quarter, week, time) %>% 
     summarise(elec=sum(residual_load)) %>% ungroup() %>%
     arrange(EconYear, quarter, week, time)
-elecdata_weekly <- matrix(elec$elec, ncol=168)     # 168 hours in a week
+elecdata_weekly <- matrix(elec$elec, ncol=168, byrow=TRUE)     # 168 hours in a week
 pcdata <- prcomp(elecdata_weekly, scale.=TRUE, retx=TRUE)
 rpwr <- pcdata$sdev^2/sum(pcdata$sdev^2)
 ```
@@ -61,7 +80,7 @@ rp <- rpwr[1:25]
 ggplot(mapping=aes(x=seq_along(rp), y=rp)) + geom_point(color='lightgrey') + 
     xlab('index') + ylab('relative power') +
     theme_solarized_2(light=FALSE) + scale_color_solarized()
-pcpltdata <- as.data.frame(pcdata$rotation[,1:6]) %>% mutate(hour=seq(1,168)) %>%
+pcpltdata <- as.data.frame(pcdata$rotation[,1:6]) %>% mutate(hour=seq(0,167)) %>%
     tidyr::gather('pc','value', -hour)
 ggplot(data=pcpltdata, aes(x=hour, y=value, color=pc)) + geom_line() + facet_wrap(~pc) +
     scale_x_continuous(breaks=24*seq(0,7), minor_breaks=(24*seq(1,7))-12) +
@@ -100,6 +119,21 @@ ggplot(data=pltpwrspec, aes(x=f, y=sqrtpwr, fill=pc)) +
     theme_solarized_2(light=FALSE) + scale_fill_solarized()
 ```
 
+Interestingly, some of these components seem to have a seasonal variation. Additionally, 
+the first and second components both have long-term trends over the years covered by the
+dataset.
+```{r pctime.seasonal}
+pltdata_seas <- as.data.frame(pcdata$x[,1:6])
+pltdata_seas$week <- seq(1,nrow(pltdata_seas))
+pltdata_seas <- tidyr::gather(pltdata_seas, 'component', 'coefficient', -week)
+ggplot(data=pltdata_seas, aes(x=week, y=coefficient)) + geom_line() +
+    facet_wrap(~component) + theme_bw() +
+    scale_x_continuous(breaks=seq(0,nrow(pltdata_seas), 104), 
+                       minor_breaks = seq(104,nrow(pltdata_seas), 104)-52)
+```
+
+
+
 ```{r model2.lm}
 ## Get a table of weeks
 weektbl <- count(elec, EconYear, quarter, week) %>% arrange(EconYear, quarter, week)
@@ -128,3 +162,22 @@ m2lm[[6]] <- lm(gdp ~ PC1+PC2+PC3+PC4+PC5+PC6+petrol+gas, m2data)
 m2lmstats <- bind_rows(lapply(m2lm, broom::glance))
 m2lmstats
 ```
+
+The lowest AIC is the one that uses all 6 components.  Let's see how the predictions look.
+```{r predict.pca}
+gdp2 <- predict(m2lm[[6]])
+ggplot(mapping=aes(x=m2data$gdp, y=gdp2)) + geom_point(size=1.5) + 
+        geom_abline(intercept=0, slope=1, size=0.8) +
+        xlab('Observed GDP (Billion USD)') + ylab('Predicted GDP') +
+        theme_bw()
+rerr <- (gdp2-m2data$gdp)/m2data$gdp * 100
+summary(rerr)
+summary(abs(rerr))
+ggplot(mapping=aes(x=rerr)) + geom_dotplot(binwidth=0.5) +
+    theme_bw() + 
+    scale_y_continuous(NULL, breaks=NULL)
+```
+This is actually not bad, considering the simplicity of the model.  However, it's not great
+in absolute terms.  The median absolute error is `r signif(median(abs(rerr)), 2)`%.  Annualized 
+quarterly GDP growth rates are usually between 2-3%, or 0.5-0.7% quarterly growth.  Thus,
+errors of that size or larger would be enough to completely obscure any growth trend.  
