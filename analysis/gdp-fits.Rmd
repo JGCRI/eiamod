@@ -175,7 +175,7 @@ summary(rerr)
 summary(abs(rerr))
 ggplot(mapping=aes(x=rerr)) + geom_dotplot(binwidth=0.5) +
     theme_bw() + 
-    scale_y_continuous(NULL, breaks=NULL)
+    scale_y_continuous(breaks=NULL)
 ```
 This is actually not bad, considering the simplicity of the model.  However, it's not great
 in absolute terms.  The median absolute error is `r signif(median(abs(rerr)), 2)`%.  Annualized 
