@@ -51,5 +51,6 @@ readem_all <- function()
 alldata <- readem_all()
 energy_weekly <- alldata$energy
 gdp_quarterly <- alldata$gdp
+weekcount <- dplyr::count(energy_weekly, EconYear, quarter)
 
-usethis::use_data(energy_weekly, gdp_quarterly, compress='xz')
+usethis::use_data(energy_weekly, gdp_quarterly, weekcount, compress='xz')
